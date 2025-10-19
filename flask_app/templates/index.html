@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Real-Time Traffic Congestion Monitor</title>
+
+    <!-- Leaflet CSS -->
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    />
+
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background: #1a1a2e;
+        color: #eee;
+      }
+
+      #header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 20px;
+        text-align: center;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+      }
+
+      #header h1 {
+        margin: 0;
+        font-size: 28px;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+      }
+
+      #stats {
+        display: flex;
+        justify-content: center;
+        gap: 20px;
+        padding: 15px;
+        background: #16213e;
+        flex-wrap: wrap;
+      }
+
+      .stat-box {
+        background: #0f3460;
+        padding: 15px 30px;
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+      }
+
+      .stat-box h3 {
+        font-size: 14px;
+        color: #94a3b8;
+        margin-bottom: 5px;
+      }
+
+      .stat-box p {
+        font-size: 24px;
+        font-weight: bold;
+        color: #fff;
+      }
+
+      .congested {
+        color: #ef4444;
+      }
+      .free-flow {
+        color: #22c55e;
+      }
+
+      #simulation-progress {
+        background: #0f3460;
+        padding: 10px 20px;
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+        min-width: 200px;
+      }
+
+      .progress-bar {
+        width: 100%;
+        height: 8px;
+        background: #1a1a2e;
+        border-radius: 4px;
+        margin-top: 8px;
+        overflow: hidden;
+      }
+
+      .progress-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        width: 0%;
+        transition: width 0.3s ease;
+      }
+
+      #map {
+        height: calc(100vh - 200px);
+        width: 100%;
+      }
+
+      .legend {
+        background: white;
+        padding: 10px;
+        border-radius: 5px;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+      }
+
+      .legend h4 {
+        margin: 0 0 10px 0;
+        color: #333;
+      }
+
+      .legend-item {
+        display: flex;
+        align-items: center;
+        margin: 5px 0;
+        color: #333;
+      }
+
+      .legend-icon {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        margin-right: 8px;
+      }
+
+      .red {
+        background: #ef4444;
+      }
+      .green {
+        background: #22c55e;
+      }
+
+      #status {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        background: #0f3460;
+        padding: 10px 20px;
+        border-radius: 20px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        font-size: 14px;
+      }
+
+      .pulse {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        background: #22c55e;
+        border-radius: 50%;
+        margin-right: 8px;
+        animation: pulse 2s infinite;
+      }
+
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.3;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="header">
+      <h1>🚦 Real-Time Traffic Congestion Monitor</h1>
+    </div>
+
+    <div id="stats">
+      
+      <div class="stat-box">
+        <h3>Total Locations</h3>
+        <p id="total-count">0</p>
+      </div>
+      <div class="stat-box">
+        <h3>Congested</h3>
+        <p id="congested-count" class="congested">0</p>
+      </div>
+      <div class="stat-box">
+        <h3>Free Flow</h3>
+        <p id="free-flow-count" class="free-flow">0</p>
+      </div>
+    </div>
+
+    <div id="map"></div>
+
+    <div id="status">
+      <span class="pulse"></span>
+      Live Updates Active
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <script>
+      // Initialize map
+      const map = L.map("map").setView([20.5937, 78.9629], 5); // Center of India
+
+      // Add tile layer
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "© OpenStreetMap contributors",
+        maxZoom: 18,
+      }).addTo(map);
+
+      // Legend
+      const legend = L.control({ position: "bottomleft" });
+      legend.onAdd = function (map) {
+        const div = L.DomUtil.create("div", "legend");
+        div.innerHTML = `
+                <h4>Traffic Status</h4>
+                <div class="legend-item">
+                    <div class="legend-icon red"></div>
+                    <span>Congested</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-icon green"></div>
+                    <span>Free Flow</span>
+                </div>
+            `;
+        return div;
+      };
+      legend.addTo(map);
+
+      // Marker storage and tracking
+      let markers = [];
+      let displayedRowNumbers = new Set();
+      let lastDisplayedRow = 0;
+      let congestedCount = 0;
+      let freeFlowCount = 0;
+      let totalDatasetRows = 3877;
+
+      // Add marker for a single data point
+      function addMarker(point) {
+        // Skip if already displayed
+        if (displayedRowNumbers.has(point.row_number)) {
+          return;
+        }
+
+        const isCongested = point.status === "Congested";
+        const color = isCongested ? "red" : "green";
+
+        const marker = L.circleMarker([point.lat, point.lon], {
+          radius: 8,
+          fillColor: color,
+          color: "#fff",
+          weight: 2,
+          opacity: 1,
+          fillOpacity: 0.8,
+        }).addTo(map);
+
+        // Popup with detailed information
+        marker.bindPopup(`
+          <strong>Row:</strong> ${point.row_number}<br>
+          <strong>Status:</strong> ${point.status}<br>
+          <strong>Congestion Level:</strong> ${point.congestion_level}<br>
+          <strong>Speed:</strong> ${point.traffic_speed.toFixed(1)} km/h<br>
+          <strong>Density:</strong> ${point.traffic_density.toFixed(1)} vpkm<br>
+          <strong>Vehicles:</strong> ${point.vehicle_count}<br>
+          <strong>Location:</strong> ${point.lat.toFixed(4)}, ${point.lon.toFixed(4)}
+        `);
+
+        markers.push(marker);
+        displayedRowNumbers.add(point.row_number);
+        
+        // Update counts
+        if (isCongested) {
+          congestedCount++;
+        } else {
+          freeFlowCount++;
+        }
+        
+        // Auto-open popup for latest marker
+        marker.openPopup();
+        
+        // Pan map to new marker
+        map.panTo([point.lat, point.lon]);
+        
+        // Update last displayed row
+        lastDisplayedRow = Math.max(lastDisplayedRow, point.row_number);
+        
+        // Update stats
+        updateStats();
+        
+        console.log(`✅ Row ${point.row_number} - ${point.status} | Speed: ${point.traffic_speed.toFixed(1)} km/h`);
+      }
+
+      // Update statistics display
+      function updateStats() {
+        document.getElementById("total-count").textContent = displayedRowNumbers.size;
+        document.getElementById("congested-count").textContent = congestedCount;
+        document.getElementById("free-flow-count").textContent = freeFlowCount;
+        
+        // Update progress
+        document.getElementById("current-row").textContent = 
+          `Row ${lastDisplayedRow} / ${totalDatasetRows}`;
+        
+        const progressPercent = (lastDisplayedRow / totalDatasetRows) * 100;
+        document.getElementById("progress-fill").style.width = progressPercent + "%";
+      }
+
+      // Initialize Server-Sent Events connection
+      console.log("🔌 Connecting to real-time stream...");
+      const eventSource = new EventSource("/stream");
+
+      eventSource.onmessage = function(event) {
+        try {
+          const data = JSON.parse(event.data);
+          console.log("📡 Received:", data);
+          addMarker(data);
+        } catch (error) {
+          console.error("Error parsing stream data:", error);
+        }
+      };
+
+      eventSource.onerror = function(error) {
+        console.error("❌ Stream connection error:", error);
+        // Will automatically try to reconnect
+      };
+
+      eventSource.onopen = function() {
+        console.log("✅ Stream connected! Waiting for data...");
+      };
+
+      // Initial stats display
+      updateStats();
+    </script>
+  </body>
+</html>

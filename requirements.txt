@@ -1,0 +1,15 @@
+# Kafka dependencies
+kafka-python==2.0.2
+
+# MongoDB dependencies
+pymongo==4.6.1
+
+# Flask dependencies
+Flask==3.0.0
+Flask-Cors==4.0.0
+
+# Data processing
+pandas==2.1.4
+
+# Optional: For better JSON handling
+python-dateutil==2.8.2
